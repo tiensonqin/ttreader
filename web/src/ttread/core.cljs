@@ -21,27 +21,28 @@
 
 (defn fetch-tweets
   [channel-name]
-  (let [users (get (:channels @app-state) channel-name)
-        q (->> (map #(str "from:" %) users)
-               (str/join "+OR+"))]
-    (-> (js/fetch
-         (str "https://ttreader-api.now.sh/search/" q "/0/0")
-         (clj->js {:method "GET"
-                   :headers {"Accept" "application/json"
-                             "Content-Type" "application/json"}}))
-        (.then (fn [resp]
-                 (if (not (nil? resp))
-                   (let [ok (.-ok resp)]
-                     (-> (.json resp)
-                         (.then (fn [resp]
-                                  (let [res (js->clj resp :keywordize-keys true)]
-                                    (swap! app-state (fn [s]
-                                                       (update s :tweets
-                                                               (fn [tweets]
-                                                                 (assoc tweets channel-name
-                                                                        (get-in res [:success :statuses]))))))))))))))
-        (.catch (fn [err]
-                  (.dir js/console err))))
+  (let [users (get (:channels @app-state) channel-name)]
+    (when (seq users)
+      (let [q (->> (map #(str "from:" %) users)
+                   (str/join "+OR+"))]
+        (-> (js/fetch
+             (str "https://ttreader-api.now.sh/search/" q "/0/0")
+             (clj->js {:method "GET"
+                       :headers {"Accept" "application/json"
+                                 "Content-Type" "application/json"}}))
+            (.then (fn [resp]
+                     (if (not (nil? resp))
+                       (let [ok (.-ok resp)]
+                         (-> (.json resp)
+                             (.then (fn [resp]
+                                      (let [res (js->clj resp :keywordize-keys true)]
+                                        (swap! app-state (fn [s]
+                                                           (update s :tweets
+                                                                   (fn [tweets]
+                                                                     (assoc tweets channel-name
+                                                                            (get-in res [:success :statuses]))))))))))))))
+            (.catch (fn [err]
+                      (.dir js/console err))))))
 
 
     ))
@@ -120,36 +121,36 @@
                        (reset! edit-modal? true))}]]
 
       [:div {:class (if @edit-modal?
-                     "modal is-active"
-                     "modal")}
-      [:div {:class "modal-background"}]
-      [:div {:class "modal-content"
-             :style {:padding 80}}
-       [:h1 {:class "title"
-             :style {:color "#ddd"}}
-        "Edit configuration"]
-       [:div {:class "field"}
+                      "modal is-active"
+                      "modal")}
+       [:div {:class "modal-background"}]
+       [:div {:class "modal-content"
+              :style {:padding 80}}
+        [:h1 {:class "title"
+              :style {:color "#ddd"}}
+         "Edit configuration"]
+        [:div {:class "field"}
+         [:div {:class "control"}
+          [:textarea {:class "textarea"
+                      :rows 10
+                      :value (if @config
+                               @config
+                               ;; (with-out-str (pprint/pprint (:channels state)))
+                               (:channels state))
+                      :onChange (fn [e] (reset! config (ev e)))}]]]
         [:div {:class "control"}
-         [:textarea {:class "textarea"
-                     :rows 10
-                     :value (if @config
-                              @config
-                              ;; (with-out-str (pprint/pprint (:channels state)))
-                              (:channels state))
-                     :onChange (fn [e] (reset! config (ev e)))}]]]
-       [:div {:class "control"}
-        [:a {:class "button is-primary"
-             :onClick (fn []
-                        (let [channels (reader/read-string @config)]
-                          (storage/set-item! "channels" channels)
-                          (swap! app-state assoc :channels channels)
-                          ;; close modal
-                          (reset! edit-modal? false)))}
-         "Submit"]]]
-      [:a {:class "modal-close is-large"
-           :aria-label "close"
-           :onClick (fn []
-                      (reset! edit-modal? false))}]]
+         [:a {:class "button is-primary"
+              :onClick (fn []
+                         (let [channels (reader/read-string @config)]
+                           (storage/set-item! "channels" channels)
+                           (swap! app-state assoc :channels channels)
+                           ;; close modal
+                           (reset! edit-modal? false)))}
+          "Submit"]]]
+       [:a {:class "modal-close is-large"
+            :aria-label "close"
+            :onClick (fn []
+                       (reset! edit-modal? false))}]]
 
       [:a {:style {:fontSize 30
                    :marginTop -12
