@@ -1,0 +1,12 @@
+var DummyClass={};
+DummyClass.catch=function(){};
+DummyClass.clear=function(){};
+DummyClass.fromNow=function(){};
+DummyClass.getItem=function(){};
+DummyClass.json=function(){};
+DummyClass.removeItem=function(){};
+DummyClass.setItem=function(){};
+DummyClass.success=function(){};
+DummyClass.then=function(){};
+DummyClass.ok=function(){};
+DummyClass.json=function(){};

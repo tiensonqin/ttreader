@@ -1,0 +1,16 @@
+{
+  "name": "ttreader",
+  "alias": "ttreader",
+  "env": {
+    "NODE_ENV": "production",
+    "TWITTER_CONSUMER_KEY": "@twitter-consumer-key",
+    "TWITTER_CONSUMER_SECRET": "@twitter-consumer-secret",
+    "TWITTER_ACCESS_TOKEN_KEY": "@twitter-access-token-key",
+    "TWITTER_ACCESS_TOKEN_SECRET": "@twitter-access-token-secret"
+  },
+  "files": [
+    "now/package.json",
+    "lib/js"
+  ],
+  "type": "npm"
+}

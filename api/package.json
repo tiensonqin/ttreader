@@ -1,0 +1,25 @@
+{
+  "name": "ttreader",
+  "version": "0.1.0",
+  "scripts": {
+    "dev:build": "bsb -make-world",
+    "dev": "bsb -make-world -w",
+    "clean": "bsb -clean-world",
+    "dev:start": "nodemon ./lib/js/src/server.js",
+    "start": "node ./lib/js/src/server.js"
+  },
+  "keywords": [
+    "BuckleScript"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "ppx_let": "andreypopp/ppx_let",
+    "ppx_let_promise": "andreypopp/ppx_let_promise"
+
+  },
+  "dependencies": {
+    "express": "^4.14.0",
+    "twitter": "^1.7.1",
+    "bs-platform": "1.9.3"
+  }
+}
