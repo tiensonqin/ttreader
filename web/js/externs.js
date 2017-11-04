@@ -1,5 +1,6 @@
 var DummyClass={};
 DummyClass.catch=function(){};
+DummyClass.dir=function(){};
 DummyClass.clear=function(){};
 DummyClass.fromNow=function(){};
 DummyClass.getItem=function(){};
@@ -10,3 +11,4 @@ DummyClass.success=function(){};
 DummyClass.then=function(){};
 DummyClass.ok=function(){};
 DummyClass.json=function(){};
+DummyClass.getElementById=function(){};

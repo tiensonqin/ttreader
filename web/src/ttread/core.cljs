@@ -226,9 +226,11 @@
   []
   (let [{:keys [current-channel tweets]} (rum/react app-state)]
     (fetch-tweets current-channel)
-    [:div {:style {:flex 1
+    [:div {:id "root-div"
+           :style {:flex 1
                    :background "cadetblue"}}
-     [:div {:class "container"
+     [:div {:id "root-container"
+            :class "container"
             :style {:padding 20
                     :background "beige"
                     :maxWidth 600}}
@@ -236,12 +238,14 @@
       (new-channel)
 
       [:div
-       (for [data (get tweets current-channel)]
-         (tweet data))]]])
-  )
+       (let [tweets (get tweets current-channel)]
+         (if (seq tweets)
+           (for [data tweets]
+             (tweet data))
+           "Click `+` to add a new channel."))]]]))
 
 (rum/mount (home)
-           (. js/document (getElementById "app")))
+           (.getElementById js/document "app"))
 
 (defn on-js-reload []
   ;; optionally touch your app-state to force rerendering depending on
