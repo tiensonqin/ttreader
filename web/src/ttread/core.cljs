@@ -25,7 +25,7 @@
         q (->> (map #(str "from:" %) users)
                (str/join "+OR+"))]
     (-> (js/fetch
-         (str "https://ttreader.now.sh/search/" q "/0/0")
+         (str "https://ttreader-api.now.sh/search/" q "/0/0")
          (clj->js {:method "GET"
                    :headers {"Accept" "application/json"
                              "Content-Type" "application/json"}}))
