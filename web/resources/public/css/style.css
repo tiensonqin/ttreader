@@ -1,8 +1,8 @@
 /* some style */
-* { padding: 0; margin: 0; }
-html, body, #app, #root-div, #root-container {
-    min-height: 100% !important;
+html{
     height: 100%;
 }
-#app {
+body{
+    min-height: 100%;
+    background: cadetblue;
 }

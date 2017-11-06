@@ -7,7 +7,7 @@
   :min-lein-version "2.7.1"
 
   :dependencies [[org.clojure/clojure "1.9.0-alpha17"]
-                 [org.clojure/clojurescript "1.9.908"]
+                 [org.clojure/clojurescript "1.9.946"]
                  [org.clojure/core.async  "0.3.443"]
                  [rum "0.10.8"]
                  [cljsjs/moment "2.17.1-1"]]
@@ -47,6 +47,7 @@
                 :compiler {:output-to "resources/public/js/compiled/ttread.js"
                            :main ttread.core
                            :externs       ["js/externs.js"]
+                           :infer-externs      true
                            :parallel-build     true
                            :optimizations :advanced
                            :pretty-print false}}]}

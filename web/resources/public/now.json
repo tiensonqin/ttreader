@@ -1,0 +1,10 @@
+{
+  "name": "ttreader",
+  "alias": "ttreader",
+  "files": [
+    "now.json",
+    "index.html",
+    "js/*",
+    "css/*"
+  ]
+}

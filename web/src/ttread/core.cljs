@@ -4,7 +4,8 @@
             [clojure.pprint :as pprint]
             [ttread.storage :as storage]
             [cljs.tools.reader :as reader]
-            [cljsjs.moment]))
+            [cljsjs.moment]
+            [goog.object :as gobj]))
 
 (enable-console-print!)
 
@@ -13,11 +14,46 @@
 ;; define your app data so that it doesn't get over-written on reload
 
 ;; {:name "spurs" :users #{}}
+(def channels (storage/get-item "channels"))
 (defonce app-state
-  (let [channels (storage/get-item "channels")]
-    (atom {:current-channel (ffirst channels)
-           :channels channels
-           :tweets {}})))
+  (atom {:current-channel (ffirst channels)
+         :channels channels
+         :tweets {}}))
+
+(defn to-clj
+  "simplified js->clj for JSON data, :key-fn default to keyword"
+  ([x] (to-clj x {}))
+  ([x opts]
+   (cond
+     (nil? x)
+     x
+
+     (number? x)
+     x
+
+     (string? x)
+     x
+
+     (boolean? x)
+     x
+
+     (array? x)
+     (into [] (map #(to-clj % opts)) (array-seq x))
+
+     :else ;; object
+     (reduce
+      (fn [result key]
+        (let [value
+              (gobj/get x key)
+
+              key-fn
+              (get opts :key-fn keyword)]
+
+          (assoc result (key-fn (to-clj key opts)) (to-clj value opts))
+          ))
+      {}
+      (gobj/getKeys x)
+      ))))
 
 (defn fetch-tweets
   [channel-name]
@@ -35,12 +71,14 @@
                        (let [ok (.-ok resp)]
                          (-> (.json resp)
                              (.then (fn [resp]
-                                      (let [res (js->clj resp :keywordize-keys true)]
-                                        (swap! app-state (fn [s]
-                                                           (update s :tweets
-                                                                   (fn [tweets]
-                                                                     (assoc tweets channel-name
-                                                                            (get-in res [:success :statuses]))))))))))))))
+                                      (if ok
+                                        (let [res (to-clj resp)]
+                                          (swap! app-state (fn [s]
+                                                             (update s :tweets
+                                                                     (fn [tweets]
+                                                                       (assoc tweets channel-name
+                                                                              (get-in res [:success :statuses])))))))
+                                        (.dir js/console resp)))))))))
             (.catch (fn [err]
                       (.dir js/console err))))))
 
@@ -79,7 +117,7 @@
       (.fromNow (new js/moment created_at))]]]
    ])
 
-(rum/defcs new-channel < rum/reactive
+(rum/defcc new-channel <
   (rum/local nil ::channel-name)
   (rum/local nil ::users)
   (rum/local nil ::config)
@@ -87,31 +125,33 @@
   (rum/local false ::users-invalid?)
   (rum/local false ::add-channel-modal?)
   (rum/local false ::edit-modal?)
-  [s]
-  (let [channel-name-invalid? (::channel-name-invalid? s)
+  [comp state]
+  (let [s @(rum/state comp)
+        channel-name-invalid? (::channel-name-invalid? s)
         channel-name (::channel-name s)
         users (::users s)
         users-invalid? (::users-invalid? s)
         add-channel-modal? (::add-channel-modal? s)
 
         config (::config s)
-        edit-modal? (::edit-modal? s)
-
-        state (rum/react app-state)]
+        edit-modal? (::edit-modal? s)]
     [:div
      [:div {:class "tags"}
       [:div {:style {:flex 1}}
-       (for [[channel-name users] (:channels state)]
-         [:a {:onClick (fn []
-                         (swap! app-state assoc :current-channel channel-name)
-                         ;; load data
-                         (fetch-tweets channel-name))
-              :key channel-name}
-          [:span {:class (if (= channel-name (:current-channel state))
-                           "tag is-primary is-medium"
-                           "tag is-medium is-dark")
-                  :style {:margin-right 10}}
-           channel-name]])]
+       (if (:channels state)
+         (for [[channel-name users] (:channels state)]
+           [:a {:onClick (fn []
+                           (swap! app-state assoc :current-channel channel-name)
+                           ;; load data
+                           (fetch-tweets channel-name))
+                :key channel-name}
+            [:span {:class (if (= channel-name (:current-channel state))
+                             "tag is-primary is-medium"
+                             "tag is-medium is-dark")
+                    :style {:margin-right 10}}
+             channel-name]])
+         [:span {:style {:fontWeight "600"}}
+          "TTreader"])]
       [:span {:class "icon is-medium"}
        [:a {:class "fa fa-pencil"
             :style {:color "#000"
@@ -200,7 +240,6 @@
        [:div {:class "control"}
         [:a {:class "button is-primary"
              :onClick (fn []
-                        (prn @channel-name @users)
                         (cond
                           (str/blank? @channel-name)
                           (reset! channel-name-invalid? true)
@@ -224,26 +263,33 @@
                       (reset! add-channel-modal? false))}]]]))
 
 (rum/defc home < rum/reactive
+  {:will-mount (fn [state]
+                (fetch-tweets (ffirst channels))
+                state)}
   []
-  (let [{:keys [current-channel tweets]} (rum/react app-state)]
-    (fetch-tweets current-channel)
+
+  (let [{:keys [current-channel tweets channels]
+         :as app-state} (rum/react app-state)]
+
     [:div {:id "root-div"
-           :style {:flex 1
-                   :background "cadetblue"}}
+           :style {:background "cadetblue"}}
      [:div {:id "root-container"
             :class "container"
             :style {:padding 20
                     :background "beige"
                     :maxWidth 600}}
 
-      (new-channel)
+      (new-channel app-state)
 
       [:div
        (let [tweets (get tweets current-channel)]
-         (if (seq tweets)
+         (cond
+           (nil? channels)
+           "Click `+` to add a new channel."
+
+           :else
            (for [data tweets]
-             (tweet data))
-           "Click `+` to add a new channel."))]]]))
+             (tweet data))))]]]))
 
 (rum/mount (home)
            (.getElementById js/document "app"))
