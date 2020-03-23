@@ -16,7 +16,8 @@
 ;; {:name "spurs" :users #{}}
 (def channels (storage/get-item "channels"))
 (defonce app-state
-  (atom {:current-channel (ffirst channels)
+  (atom {:loading? false
+         :current-channel (ffirst channels)
          :channels channels
          :tweets {}}))
 
@@ -52,15 +53,18 @@
           (assoc result (key-fn (to-clj key opts)) (to-clj value opts))
           ))
       {}
-      (gobj/getKeys x)
-      ))))
+      (gobj/getKeys x)))))
 
 (defn fetch-tweets
   [channel-name]
-  (let [users (get (:channels @app-state) channel-name)]
-    (when (seq users)
-      (let [q (->> (map #(str "from:" %) users)
-                   (str/join "+OR+"))]
+  (let [config (get (:channels @app-state) channel-name)
+        {:keys [users keyword]} config]
+    (when (or (seq users) keyword)
+      (let [q (if keyword
+                keyword
+                (->> (map #(str "from:" %) users)
+                    (str/join "+OR+")))]
+        (swap! app-state assoc :loading? true)
         (-> (js/fetch
              (str "https://ttreader-api.now.sh/search/" q "/0/0")
              (clj->js {:method "GET"
@@ -74,22 +78,19 @@
                                       (if ok
                                         (let [res (to-clj resp)]
                                           (swap! app-state (fn [s]
-                                                             (update s :tweets
-                                                                     (fn [tweets]
-                                                                       (assoc tweets channel-name
-                                                                              (get-in res [:success :statuses])))))))
+                                                             (-> (update s :tweets
+                                                                      (fn [tweets]
+                                                                        (assoc tweets channel-name
+                                                                               (get-in res [:success :statuses]))))
+                                                                 (assoc :loading? false)))))
                                         (.dir js/console resp)))))))))
             (.catch (fn [err]
-                      (.dir js/console err))))))
-
-
-    ))
-
-
+                      (swap! app-state assoc :loading? false)
+                      (.dir js/console err))))))))
 
 (rum/defc tweet < {:key-fn (fn [data]
                              (:id_str data))}
-  [{:keys [text user created_at id_str retweet_count favorite_count]
+  [{:keys [text user created_at id_str retweet_count favorite_count entities]
     :as data}]
   [:div {:class "card"
          :style {:marginBottom 20}
@@ -112,34 +113,54 @@
     [:div {:class "content"}
      text
      [:br]
+     (when-let [urls (:urls entities)]
+       (for [{:keys [expanded_url]} urls]
+         [:a {:key expanded_url
+              :href expanded_url
+              :target "_blank"}
+          expanded_url]))
+     (when-let [media (:media entities)]
+       (when (seq media)
+         (for [{:keys [type media_url]} media]
+           (case type
+             "photo"
+             [:img {:key media_url
+                    :src media_url
+                    :style {:borderRadius 8}}]
+             nil))))
      [:span {:style {:float "right"
                      :fontSize 12}}
-      (.fromNow (new js/moment created_at))]]]
-   ])
+      (.fromNow (new js/moment created_at))]]]])
 
 (rum/defcc new-channel <
+  rum/reactive
   (rum/local nil ::channel-name)
   (rum/local nil ::users)
+  (rum/local nil ::keyword)
   (rum/local nil ::config)
   (rum/local false ::channel-name-invalid?)
-  (rum/local false ::users-invalid?)
+  (rum/local false ::users-or-keyword-invalid?)
   (rum/local false ::add-channel-modal?)
   (rum/local false ::edit-modal?)
-  [comp state]
-  (let [s @(rum/state comp)
+  {:will-mount (fn [state]
+                 (fetch-tweets (ffirst channels))
+                 state)}
+  [comp]
+  (let [state (rum/react app-state)
+        s @(rum/state comp)
         channel-name-invalid? (::channel-name-invalid? s)
         channel-name (::channel-name s)
         users (::users s)
-        users-invalid? (::users-invalid? s)
+        keyword (::keyword s)
+        users-or-keyword-invalid? (::users-or-keyword-invalid? s)
         add-channel-modal? (::add-channel-modal? s)
-
         config (::config s)
         edit-modal? (::edit-modal? s)]
     [:div
      [:div {:class "tags"}
       [:div {:style {:flex 1}}
        (if (:channels state)
-         (for [[channel-name users] (:channels state)]
+         (for [[channel-name _] (:channels state)]
            [:a {:onClick (fn []
                            (swap! app-state assoc :current-channel channel-name)
                            ;; load data
@@ -173,19 +194,20 @@
          [:div {:class "control"}
           [:textarea {:class "textarea"
                       :rows 10
-                      :value (if @config
-                               @config
-                               ;; (with-out-str (pprint/pprint (:channels state)))
-                               (:channels state))
+                      :value (or @config (:channels state))
                       :onChange (fn [e] (reset! config (ev e)))}]]]
         [:div {:class "control"}
          [:a {:class "button is-primary"
               :onClick (fn []
-                         (let [channels (reader/read-string @config)]
+                         (let [channels (if-not (str/blank? @config)
+                                          (reader/read-string @config)
+                                          (:channels state))]
                            (storage/set-item! "channels" channels)
                            (swap! app-state assoc :channels channels)
                            ;; close modal
-                           (reset! edit-modal? false)))}
+                           (reset! edit-modal? false)
+
+                           (fetch-tweets (ffirst channels))))}
           "Submit"]]]
        [:a {:class "modal-close is-large"
             :aria-label "close"
@@ -230,12 +252,21 @@
          [:textarea {:class "textarea"
                      :placeholder "e.g. manuginobili, timduncan \nUsernames are seperated by ,"
                      :onChange (fn [e]
-                                 (reset! users-invalid? false)
-                                 (reset! users (ev e)))}]
-         (if @users-invalid?
-           [:p {:class "help is-danger"}
-            "Users can't be blank."])]]
+                                 (reset! users (ev e)))}]]]
 
+       [:div {:class "field"}
+        [:label {:class "label"
+                 :style {:color "#159b85"}}
+         "Keyword"]
+        [:div {:class "control"}
+         [:textarea {:class "textarea"
+                     :placeholder "e.g. clojure"
+                     :onChange (fn [e]
+                                 (reset! keyword (ev e)))}]]]
+
+       (if @users-or-keyword-invalid?
+         [:p {:class "help is-danger"}
+          "Users or keyword can't be blank."])
 
        [:div {:class "control"}
         [:a {:class "button is-primary"
@@ -244,33 +275,46 @@
                           (str/blank? @channel-name)
                           (reset! channel-name-invalid? true)
 
-                          (str/blank? @users)
-                          (reset! users-invalid? true)
+                          (and (str/blank? @users)
+                               (str/blank? @keyword))
+                          (reset! users-or-keyword-invalid? true)
 
                           :else
-                          (let [channels (assoc (:channels state) @channel-name (set (str/split @users #",[\s]*")))]
+                          (let [channels (assoc (:channels state)
+                                                @channel-name
+                                                {:users (set (str/split @users #",[\s]*"))
+                                                 :keyword @keyword})]
                             (storage/set-item! "channels" channels)
                             (swap! app-state assoc :channels channels)
                             ;; close modal
                             (reset! add-channel-modal? false)
                             (reset! channel-name nil)
-                            (reset! users nil))))}
+                            (reset! users nil)
+                            (reset! keyword nil)
+                            (fetch-tweets (ffirst channels)))))}
          "Submit"]]]
       [:a {:class "modal-close is-large"
            :aria-label "close"
            :onClick (fn []
-                      (prn "hi")
                       (reset! add-channel-modal? false))}]]]))
 
-(rum/defc home < rum/reactive
-  {:will-mount (fn [state]
-                (fetch-tweets (ffirst channels))
-                state)}
+(rum/defc tweets < rum/reactive
   []
-
   (let [{:keys [current-channel tweets channels]
          :as app-state} (rum/react app-state)]
+    [:div
+     (let [tweets (get tweets current-channel)]
+       (cond
+         (nil? channels)
+         "Click `+` to add a new channel."
 
+         :else
+         (for [data tweets]
+           (tweet data))))]))
+
+(rum/defc home < rum/reactive
+  []
+  (let [{:keys [loading?]} (rum/react app-state)]
     [:div {:id "root-div"
            :style {:background "cadetblue"}}
      [:div {:id "root-container"
@@ -278,18 +322,10 @@
             :style {:padding 20
                     :background "beige"
                     :maxWidth 600}}
-
-      (new-channel app-state)
-
-      [:div
-       (let [tweets (get tweets current-channel)]
-         (cond
-           (nil? channels)
-           "Click `+` to add a new channel."
-
-           :else
-           (for [data tweets]
-             (tweet data))))]]]))
+      (new-channel)
+      (if loading?
+        [:p "Loading ..."])
+      (tweets)]]))
 
 (rum/mount (home)
            (.getElementById js/document "app"))
