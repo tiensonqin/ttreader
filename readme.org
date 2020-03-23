@@ -3,4 +3,4 @@
 
   #+CAPTION: ttreader screenshot
   #+NAME:   fig:screenshot.png
-  [[./img/screenshot.png]]
+  [[./img/screenshot.jpg]]
