@@ -1,0 +1,6 @@
+* ttreader
+  Save your time on Twitter!
+
+  #+CAPTION: ttreader screenshot
+  #+NAME:   fig:screenshot.png
+  [[./img/screenshot.png]]
