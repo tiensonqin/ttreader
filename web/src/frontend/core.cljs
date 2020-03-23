@@ -1,19 +1,18 @@
-(ns ttread.core
+(ns frontend.core
   (:require [rum.core :as rum]
             [clojure.string :as str]
-            [clojure.pprint :as pprint]
-            [ttread.storage :as storage]
+            [frontend.storage :as storage]
             [cljs.tools.reader :as reader]
-            [cljsjs.moment]
+            ["dayjs" :as day]
+            ["dayjs/plugin/relativeTime" :as day-relative]
             [goog.object :as gobj]))
 
-(enable-console-print!)
+(.extend day day-relative)
 
 (defn ev [e] (aget e "target" "value"))
 
 ;; define your app data so that it doesn't get over-written on reload
 
-;; {:name "spurs" :users #{}}
 (def channels (storage/get-item "channels"))
 (defonce app-state
   (atom {:loading? false
@@ -55,6 +54,12 @@
       {}
       (gobj/getKeys x)))))
 
+(defonce dev? ^boolean goog.DEBUG)
+(def api
+  (if dev?
+    "http://localhost:3000"
+    "https://ttreader.now.sh"))
+
 (defn fetch-tweets
   [channel-name]
   (let [config (get (:channels @app-state) channel-name)
@@ -63,13 +68,14 @@
       (let [q (if keyword
                 keyword
                 (->> (map #(str "from:" %) users)
-                    (str/join "+OR+")))]
+                     (str/join "+OR+")))]
         (swap! app-state assoc :loading? true)
         (-> (js/fetch
-             (str "https://ttreader-api.now.sh/search/" q "/0/0")
+             (str api "/api/search/" q "/0/0")
              (clj->js {:method "GET"
                        :headers {"Accept" "application/json"
-                                 "Content-Type" "application/json"}}))
+                                 "Content-Type" "application/json"
+                                 "Origin" "https://ttreader.now.sh"}}))
             (.then (fn [resp]
                      (if (not (nil? resp))
                        (let [ok (.-ok resp)]
@@ -79,9 +85,9 @@
                                         (let [res (to-clj resp)]
                                           (swap! app-state (fn [s]
                                                              (-> (update s :tweets
-                                                                      (fn [tweets]
-                                                                        (assoc tweets channel-name
-                                                                               (get-in res [:success :statuses]))))
+                                                                         (fn [tweets]
+                                                                           (assoc tweets channel-name
+                                                                                  (get-in res [:success :statuses]))))
                                                                  (assoc :loading? false)))))
                                         (.dir js/console resp)))))))))
             (.catch (fn [err]
@@ -90,47 +96,48 @@
 
 (rum/defc tweet < {:key-fn (fn [data]
                              (:id_str data))}
-  [{:keys [text user created_at id_str retweet_count favorite_count entities]
+  [{:keys [full_text user created_at id_str retweet_count favorite_count entities retweeted_status]
     :as data}]
-  [:div {:class "card"
-         :style {:marginBottom 20}
-         :onClick (fn [] (prn "clicked"))}
-   [:div {:class "card-content"}
-    [:div {:class "media"}
-     [:div {:class "media-left"}
-      [:figure {:class "image is-48x48"}
-       [:img {:src (:profile_image_url user)
-              :style {:borderRadius 4}}]]]
-     [:div {:class "media-content"}
-      [:p {:class "title is-4"} (:name user)]
-      [:p {:class "subtitle is-6"} (str "@" (:screen_name user))]]
+  (let [text (or (:full_text retweeted_status) full_text)]
+    [:div {:class "card"
+           :style {:marginBottom 20}
+           :onClick (fn [] (prn "clicked"))}
+     [:div {:class "card-content"}
+      [:div {:class "media"}
+       [:div {:class "media-left"}
+        [:figure {:class "image is-48x48"}
+         [:img {:src (:profile_image_url user)
+                :style {:borderRadius 4}}]]]
+       [:div {:class "media-content"}
+        [:p {:class "title is-4"} (:name user)]
+        [:p {:class "subtitle is-6"} (str "@" (:screen_name user))]]
 
-     [:span {:class "icon"}
-      [:a {:href (str "https://twitter.com/" (:screen_name user) "/status/" id_str)
-           :target "_blank"
-           :class "fa fa-twitter"
-           :style {:color "#666"}}]]]
-    [:div {:class "content"}
-     text
-     [:br]
-     (when-let [urls (:urls entities)]
-       (for [{:keys [expanded_url]} urls]
-         [:a {:key expanded_url
-              :href expanded_url
-              :target "_blank"}
-          expanded_url]))
-     (when-let [media (:media entities)]
-       (when (seq media)
-         (for [{:keys [type media_url]} media]
-           (case type
-             "photo"
-             [:img {:key media_url
-                    :src media_url
-                    :style {:borderRadius 8}}]
-             nil))))
-     [:span {:style {:float "right"
-                     :fontSize 12}}
-      (.fromNow (new js/moment created_at))]]]])
+       [:span {:class "icon"}
+        [:a {:href (str "https://twitter.com/" (:screen_name user) "/status/" id_str)
+             :target "_blank"
+             :class "fa fa-twitter"
+             :style {:color "#666"}}]]]
+      [:div {:class "content"}
+       text
+       [:br]
+       (when-let [urls (:urls entities)]
+         (for [{:keys [expanded_url]} urls]
+           [:a {:key expanded_url
+                :href expanded_url
+                :target "_blank"}
+            expanded_url]))
+       (when-let [media (:media entities)]
+         (when (seq media)
+           (for [{:keys [type media_url]} media]
+             (case type
+               "photo"
+               [:img {:key media_url
+                      :src media_url
+                      :style {:borderRadius 8}}]
+               nil))))
+       [:span {:style {:float "right"
+                       :fontSize 12}}
+        (.fromNow (new day created_at))]]]]))
 
 (rum/defcc new-channel <
   rum/reactive
@@ -192,10 +199,12 @@
          "Edit configuration"]
         [:div {:class "field"}
          [:div {:class "control"}
-          [:textarea {:class "textarea"
-                      :rows 10
-                      :value (or @config (:channels state))
-                      :onChange (fn [e] (reset! config (ev e)))}]]]
+          (let [value (or (:channels state) "")]
+            [:textarea {:class "textarea"
+                        :rows 10
+                        :default-value value
+                        :on-change (fn [e] (reset! config (ev e)))}])
+          ]]
         [:div {:class "control"}
          [:a {:class "button is-primary"
               :onClick (fn []
@@ -252,7 +261,8 @@
          [:textarea {:class "textarea"
                      :placeholder "e.g. manuginobili, timduncan \nUsernames are seperated by ,"
                      :onChange (fn [e]
-                                 (reset! users (ev e)))}]]]
+                                 (reset! users (ev e)))}]
+         ]]
 
        [:div {:class "field"}
         [:label {:class "label"
@@ -327,11 +337,18 @@
         [:p "Loading ..."])
       (tweets)]]))
 
-(rum/mount (home)
-           (.getElementById js/document "app"))
+(defn start []
+  (rum/mount (home)
+             (.getElementById js/document "app")))
 
-(defn on-js-reload []
-  ;; optionally touch your app-state to force rerendering depending on
-  ;; your application
-  ;; (swap! app-state update-in [:__figwheel_counter] inc)
-  )
+(defn ^:export init []
+  ;; init is called ONCE when the page loads
+  ;; this is called in the index.html and must be exported
+  ;; so it is available even in :advanced release builds
+
+  (start))
+
+(defn stop []
+  ;; stop is called before any code is reloaded
+  ;; this is controlled by :before-load in the config
+  (js/console.log "stop"))

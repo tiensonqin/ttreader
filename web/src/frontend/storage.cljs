@@ -1,4 +1,4 @@
-(ns ttread.storage
+(ns frontend.storage
   (:require [cljs.tools.reader :as reader]))
 
 (defn set-item!
