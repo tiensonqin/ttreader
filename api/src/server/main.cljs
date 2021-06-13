@@ -6,7 +6,7 @@
 (defonce server (atom nil))
 
 (defonce config
-  {:allowed-origins #{"http://localhost:3449" "https://ttreader.vercel.com/"}})
+  {:allowed-origins #{"http://localhost:3449" "https://ttreader.vercel.app/"}})
 
 (def cors-options
   {:origin (fn [origin callback]

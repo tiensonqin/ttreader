@@ -55,7 +55,7 @@
       (gobj/getKeys x)))))
 
 (defonce dev? ^boolean goog.DEBUG)
-(def prod-api-url "https://ttreader.vercel.com")
+(def prod-api-url "https://ttreader.vercel.app")
 (def api
   (if dev?
     "http://localhost:3000"
