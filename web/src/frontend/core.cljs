@@ -55,10 +55,11 @@
       (gobj/getKeys x)))))
 
 (defonce dev? ^boolean goog.DEBUG)
+(def prod-api-url "https://ttreader.vercel.com")
 (def api
   (if dev?
     "http://localhost:3000"
-    "https://ttreader.now.sh"))
+    prod-api-url))
 
 (defn fetch-tweets
   [channel-name]
@@ -75,7 +76,7 @@
              (clj->js {:method "GET"
                        :headers {"Accept" "application/json"
                                  "Content-Type" "application/json"
-                                 "Origin" "https://ttreader.now.sh"}}))
+                                 "Origin" prod-api-url}}))
             (.then (fn [resp]
                      (if (not (nil? resp))
                        (let [ok (.-ok resp)]
