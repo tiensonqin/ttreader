@@ -3,6 +3,7 @@
             [clojure.string :as str]
             [frontend.storage :as storage]
             [cljs.tools.reader :as reader]
+            [clojure.string :as string]
             ["dayjs" :as day]
             ["dayjs/plugin/relativeTime" :as day-relative]
             [goog.object :as gobj]))
@@ -19,6 +20,8 @@
          :current-channel (ffirst channels)
          :channels channels
          :tweets {}}))
+
+(def mention-regex "(@\\w+)")
 
 (defn to-clj
   "simplified js->clj for JSON data, :key-fn default to keyword"
@@ -64,7 +67,8 @@
 (defn fetch-tweets
   [channel-name]
   (let [config (get (:channels @app-state) channel-name)
-        {:keys [users keyword]} config]
+        {:keys [users keyword]} config
+        keyword (when-not (string/blank? keyword) keyword)]
     (when (or (seq users) keyword)
       (let [q (if keyword
                 keyword
@@ -95,10 +99,25 @@
                       (swap! app-state assoc :loading? false)
                       (.dir js/console err))))))))
 
+(defn with-user-mentions
+  [text mentions]
+  (if (seq mentions)
+    (let [mentions (zipmap (map :screen_name mentions) mentions)]
+      [:div
+       (->> (string/split text (re-pattern mention-regex))
+            (map (fn [text]
+                   (or (when (= \@ (first text)) ; mention
+                         (when-let [mention (get mentions (subs text 1))]
+                           [:a {:href (str "https://twitter.com/" (subs text 1))}
+                            text]))
+                       [:span text]))))])
+    text))
+
 (rum/defc tweet < {:key-fn (fn [data]
                              (:id_str data))}
   [{:keys [full_text user created_at id_str retweet_count favorite_count entities retweeted_status]
     :as data}]
+  (prn data)
   (let [text (or (:full_text retweeted_status) full_text)]
     [:div {:class "card"
            :style {:marginBottom 20}
@@ -119,7 +138,7 @@
              :class "fa fa-twitter"
              :style {:color "#666"}}]]]
       [:div {:class "content"}
-       text
+       (with-user-mentions text (:user_mentions entities))
        [:br]
        (when-let [urls (:urls entities)]
          (for [{:keys [expanded_url]} urls]
@@ -136,9 +155,16 @@
                       :src media_url
                       :style {:borderRadius 8}}]
                nil))))
-       [:span {:style {:float "right"
-                       :fontSize 12}}
-        (.fromNow (new day created_at))]]]]))
+       [:div {:style {:float "right"
+                      :fontSize 12}}
+        [:span {:style {:margin-right 12
+                        :opacity 0.3}}
+         "Fav: " favorite_count]
+        [:span {:style {:margin-right 12
+                        :opacity 0.3}}
+         "RT: " retweet_count]
+        [:span
+         (.fromNow (new day created_at))]]]]]))
 
 (rum/defcc new-channel <
   rum/reactive
@@ -164,8 +190,15 @@
         add-channel-modal? (::add-channel-modal? s)
         config (::config s)
         edit-modal? (::edit-modal? s)]
-    [:div
-     [:div {:class "tags"}
+    [:div {:style {:position "fixed"
+                   :top 0
+                   :padding "0 20px"
+                   :z-index 10
+                   :background "beige"
+                   :width "inherit"
+                   :max-width "inherit"}}
+     [:div {:class "tags"
+            :style {:margin-bottom 0}}
       [:div {:style {:flex 1}}
        (if (:channels state)
          (for [[channel-name _] (:channels state)]
@@ -177,7 +210,8 @@
             [:span {:class (if (= channel-name (:current-channel state))
                              "tag is-primary is-medium"
                              "tag is-medium is-dark")
-                    :style {:margin-right 10}}
+                    :style {:margin-right 10
+                            :margin-bottom 0}}
              channel-name]])
          [:span {:style {:fontWeight "600"}}
           "TTreader"])]
@@ -260,10 +294,9 @@
          "Users"]
         [:div {:class "control"}
          [:textarea {:class "textarea"
-                     :placeholder "e.g. manuginobili, timduncan \nUsernames are seperated by ,"
+                     :placeholder "e.g. ProfFeynman, logseq \nUsernames are seperated by ,"
                      :onChange (fn [e]
-                                 (reset! users (ev e)))}]
-         ]]
+                                 (reset! users (ev e)))}]]]
 
        [:div {:class "field"}
         [:label {:class "label"
@@ -271,7 +304,7 @@
          "Keyword"]
         [:div {:class "control"}
          [:textarea {:class "textarea"
-                     :placeholder "e.g. clojure"
+                     :placeholder "e.g. javascript"
                      :onChange (fn [e]
                                  (reset! keyword (ev e)))}]]]
 
@@ -293,8 +326,15 @@
                           :else
                           (let [channels (assoc (:channels state)
                                                 @channel-name
-                                                {:users (set (str/split @users #",[\s]*"))
-                                                 :keyword @keyword})]
+                                                (cond->
+                                                  {}
+
+                                                  (not (string/blank? @users))
+                                                  (assoc :users (set (str/split @users #",[\s]*")))
+
+                                                  @keyword
+                                                  (assoc :keyword @keyword)))]
+                            (prn {:channels channels})
                             (storage/set-item! "channels" channels)
                             (swap! app-state assoc :channels channels)
                             ;; close modal
@@ -330,13 +370,17 @@
            :style {:background "cadetblue"}}
      [:div {:id "root-container"
             :class "container"
-            :style {:padding 20
-                    :background "beige"
+            :style {:background "beige"
                     :maxWidth 600}}
-      (new-channel)
-      (if loading?
-        [:p "Loading ..."])
-      (tweets)]]))
+      [:div {:style {:position "relative"
+                     :max-width 600
+                     :width "100%"}}
+       (new-channel)
+       (if loading?
+         [:p "Loading ..."])
+       [:div {:style {:margin-top 32
+                      :padding 20}}
+        (tweets)]]]]))
 
 (defn start []
   (rum/mount (home)

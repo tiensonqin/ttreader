@@ -4,5 +4,9 @@ html{
 }
 body{
     min-height: 100%;
+}
+
+html, body {
     background: cadetblue;
+    background-color: cadetblue;
 }
