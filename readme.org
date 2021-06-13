@@ -4,3 +4,33 @@
   #+CAPTION: ttreader screenshot
   #+NAME:   fig:screenshot.png
   [[./img/screenshot.jpg]]
+
+** Set up development
+#+begin_src sh
+  cd api
+  yarn && yarn watch
+
+  # open another terminal or tab
+  cd web
+  yarn && yarn watch
+
+  # open browser
+  open http://localhost:3000
+#+end_src
+
+** Release and publish to vercel
+
+Change the /alias/ to yours in the file /vercel.json/.
+
+#+begin_src sh
+  cd api
+  yarn && yarn release
+
+  # open another terminal or tab
+  cd web
+  yarn && yarn release
+
+  # Publish to vercel
+  vercel
+  vercel --prod
+#+end_src
